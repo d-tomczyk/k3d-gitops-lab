@@ -1,0 +1,17 @@
+- name: Wszystkie Applications Synced/Healthy
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    namespace: argocd
+  register: argo_apps
+  until: >-
+    argo_apps.resources | length > 1 and
+    (argo_apps.resources | rejectattr('status.sync.status', 'defined') | list | length == 0) and
+    (argo_apps.resources | map(attribute='status.sync.status') | reject('equalto', 'Synced') | list | length == 0) and
+    (argo_apps.resources | map(attribute='status.health.status') | reject('equalto', 'Healthy') | list | length == 0)
+  retries: "{{ apps_wait_retries }}"
+  delay: 20
+
+- name: Stan aplikacji
+  ansible.builtin.debug:
+    msg: "{{ argo_apps.resources | map(attribute='metadata.name') | zip(argo_apps.resources | map(attribute='status.sync.status'), argo_apps.resources | map(attribute='status.health.status')) | map('join', ' ') | list }}"

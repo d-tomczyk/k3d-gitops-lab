@@ -1,0 +1,73 @@
+# Wymaga sudo (ansible-playbook -K). Pominięcie: -e manage_host=false
+- name: Domeny labu w /etc/hosts
+  become: true
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} k8s-lab ({{ cluster_name }})"
+    block: "127.0.0.1 {{ lab_hosts | join(' ') }}"
+
+- name: CA labu w magazynie systemowym
+  become: true
+  ansible.builtin.copy:
+    src: "{{ ca_cert_file }}"
+    dest: /usr/local/share/ca-certificates/k8s-lab-ca.crt
+    mode: "0644"
+  register: system_ca
+
+- name: update-ca-certificates
+  become: true
+  ansible.builtin.command: update-ca-certificates
+  when: system_ca is changed
+
+# Firefox i Chrome/Chromium korzystają z własnych baz NSS, nie z magazynu systemowego.
+- name: Bazy NSS przeglądarek
+  ansible.builtin.find:
+    paths: "{{ nss_search_paths | select('directory') | list }}"
+    patterns: cert9.db
+    recurse: true
+    depth: 3
+  vars:
+    nss_search_paths:
+      - "{{ lookup('env', 'HOME') }}/.mozilla/firefox"
+      - "{{ lookup('env', 'HOME') }}/snap/firefox/common/.mozilla/firefox"
+      - "{{ lookup('env', 'HOME') }}/.pki"
+      - "{{ lookup('env', 'HOME') }}/snap/chromium/current/.pki"
+  register: nss_dbs
+
+- name: certutil dostępny?
+  ansible.builtin.command: which certutil
+  register: certutil
+  changed_when: false
+  failed_when: false
+
+- name: Brak certutil
+  ansible.builtin.debug:
+    msg: "Zainstaluj libnss3-tools (sudo apt install libnss3-tools) i uruchom ponownie z -t host, albo zaimportuj {{ ca_cert_file }} w przeglądarce ręcznie."
+  when: certutil.rc != 0 and nss_dbs.matched > 0
+
+- name: CA labu w bazach NSS przeglądarek
+  when: certutil.rc == 0
+  vars:
+    nss_nickname: "k8s-lab CA ({{ cluster_name }})"
+  block:
+    - name: CA już w bazie NSS?
+      ansible.builtin.command: certutil -L -d "sql:{{ item.path | dirname }}" -n "{{ nss_nickname }}" -a
+      loop: "{{ nss_dbs.files }}"
+      loop_control:
+        label: "{{ item.path | dirname }}"
+      register: nss_present
+      changed_when: false
+      failed_when: false
+
+    # Usuń stary wpis, jeśli CA się zmieniło (np. po utracie .secrets/), i dodaj aktualne
+    - name: Dodaj / zaktualizuj CA w bazie NSS
+      ansible.builtin.shell: |
+        certutil -D -d "sql:{{ item.item.path | dirname }}" -n "{{ nss_nickname }}" 2>/dev/null || true
+        certutil -A -d "sql:{{ item.item.path | dirname }}" -n "{{ nss_nickname }}" -t "C,," -i "{{ ca_cert_file }}"
+      loop: "{{ nss_present.results }}"
+      loop_control:
+        label: "{{ item.item.path | dirname }}"
+      # certutil zwraca PEM z CRLF — porównanie bez białych znaków
+      when: >-
+        item.rc != 0 or
+        (item.stdout | regex_replace('\\s+', '')) != (lookup('ansible.builtin.file', ca_cert_file) | regex_replace('\\s+', ''))

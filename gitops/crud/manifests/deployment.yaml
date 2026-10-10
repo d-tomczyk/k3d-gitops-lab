@@ -1,0 +1,55 @@
+# Liczbą replik steruje HPA — celowo brak pola "replicas" (Argo CD nie walczy z HPA).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crud-app
+  labels:
+    app.kubernetes.io/name: crud-app
+spec:
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: crud-app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: crud-app
+    spec:
+      containers:
+        - name: app
+          image: lab-registry:5000/crud-app:0.1.2
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: crud-app
+          env:
+            # Secret generowany przez CNPG dla właściciela bazy
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef: {name: pg-app, key: username}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: pg-app, key: password}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 160Mi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

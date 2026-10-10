@@ -1,0 +1,33 @@
+# --- ścieżki ---
+repo_dir: "{{ playbook_dir | dirname }}"
+secrets_dir: "{{ repo_dir }}/.secrets"
+ca_cert_file: "{{ repo_dir }}/lab-ca.crt"
+
+# --- klaster ---
+cluster_name: lab
+kube_context: "k3d-{{ cluster_name }}"
+registry_host_port: 5000
+
+# --- wersje chartów bootstrapu (reszta wersji w gitops/*/application.yaml) ---
+charts:
+  cert_manager: {repo: jetstack, url: https://charts.jetstack.io, chart: cert-manager, version: v1.21.2}
+  gitea: {repo: gitea-charts, url: https://dl.gitea.com/charts/, chart: gitea, version: 12.7.0}
+  argocd: {repo: argo, url: https://argoproj.github.io/argo-helm, chart: argo-cd, version: 10.10.2}
+
+# --- domeny (/etc/hosts -> 127.0.0.1) ---
+lab_hosts:
+  - crud.lab.test
+  - gitea.lab.test
+  - argocd.lab.test
+  - grafana.lab.test
+
+# --- Gitea / repo GitOps ---
+gitea_url: https://gitea.lab.test
+gitea_admin_user: gitea-admin
+gitea_repo: k3d-gitops-lab
+gitea_internal_repo_url: "http://gitea-http.gitea.svc.cluster.local:3000/{{ gitea_admin_user }}/{{ gitea_repo }}.git"
+
+# --- zachowanie ---
+manage_host: true          # /etc/hosts + zaufanie do CA w systemie (wymaga sudo: -K)
+helm_timeout: 30m          # wolne łącze — pierwsze pobieranie obrazów trwa długo
+apps_wait_retries: 180     # x 20 s = 1 h na Synced/Healthy wszystkich aplikacji

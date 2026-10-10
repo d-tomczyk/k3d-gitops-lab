@@ -1,0 +1,17 @@
+# Mirrory containerd w węzłach k3d -> lokalne pull-through cache (k3d-cache-*).
+# Cache żyją poza klastrem (wolumeny k3d-cache-*), więc przetrwają "k8s-lab.sh destroy".
+# Gdy cache jest niedostępny, containerd sam wraca do oryginalnego rejestru.
+# Wpis dla lab-registry:5000 k3d dopisuje automatycznie (--registry-create).
+mirrors:
+  docker.io:
+    endpoint:
+      - http://k3d-cache-docker:5000
+  quay.io:
+    endpoint:
+      - http://k3d-cache-quay:5000
+  ghcr.io:
+    endpoint:
+      - http://k3d-cache-ghcr:5000
+  registry.k8s.io:
+    endpoint:
+      - http://k3d-cache-k8s:5000

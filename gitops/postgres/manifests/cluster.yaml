@@ -1,0 +1,40 @@
+# PostgreSQL zarządzany przez CloudNativePG.
+# - 1 instancja (lab na jednym hoście), PVC przez StorageClass local-path
+# - użytkownik/hasło aplikacji generuje operator -> Secret "pg-app" (username, password, uri, ...)
+# - usługi: pg-rw (zapis), pg-ro, pg-r
+# - metryki: wbudowany eksporter instancji na porcie 9187 ("metrics"), PodMonitor w gitops/monitoring-config
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-minimal-trixie
+
+  bootstrap:
+    initdb:
+      database: crud
+      owner: crud
+
+  storage:
+    storageClass: local-path
+    size: 1Gi
+
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 384Mi}
+
+  postgresql:
+    parameters:
+      shared_buffers: 64MB
+      max_connections: "50"
+      effective_cache_size: 128MB
+
+  monitoring:
+    customQueriesConfigMap:
+      # Domyślne zapytania operatora — webhook CNPG i tak dopisuje je na początek listy;
+      # wpisane jawnie, żeby Argo CD nie widziało stałej różnicy (OutOfSync).
+      - name: cnpg-default-monitoring
+        key: queries
+      - name: pg-custom-queries
+        key: queries.yaml

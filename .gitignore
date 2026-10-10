@@ -1,0 +1,8 @@
+# Lokalne sekrety i artefakty bootstrapu (generowane przez Ansible / ręcznie)
+.secrets/
+lab-ca.crt
+*.retry
+.venv/
+
+# Notatki lokalne (poza repozytorium)
+plan.md

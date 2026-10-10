@@ -1,0 +1,15 @@
+- name: Klaster k3d (utwórz / uruchom zatrzymany / bez zmian)
+  ansible.builtin.command: "{{ repo_dir }}/k8s-lab.sh up"
+  args:
+    chdir: "{{ repo_dir }}"
+  environment:
+    CLUSTER_NAME: "{{ cluster_name }}"
+  register: k8s_lab_up
+  changed_when: "'Tworzę klaster' in k8s_lab_up.stdout or 'Uruchamiam' in k8s_lab_up.stdout"
+
+- name: Węzły Ready
+  kubernetes.core.k8s_info:
+    kind: Node
+    wait: true
+    wait_condition: {type: Ready, status: "True"}
+    wait_timeout: 900

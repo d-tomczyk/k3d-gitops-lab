@@ -1,0 +1,69 @@
+- name: Repo Helm cert-manager
+  kubernetes.core.helm_repository:
+    name: "{{ charts.cert_manager.repo }}"
+    repo_url: "{{ charts.cert_manager.url }}"
+
+- name: cert-manager
+  kubernetes.core.helm:
+    name: cert-manager
+    chart_ref: "{{ charts.cert_manager.repo }}/{{ charts.cert_manager.chart }}"
+    chart_version: "{{ charts.cert_manager.version }}"
+    release_namespace: cert-manager
+    create_namespace: true
+    values_files: ["{{ repo_dir }}/bootstrap/cert-manager/values.yaml"]
+
+# CA przetrwa przebudowę klastra: Secret zapisany przy pierwszej instalacji jest przywracany,
+# a cert-manager go adoptuje — przeglądarka i system nie muszą ponownie ufać nowemu CA.
+- name: Przywróć zapisane CA
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ secrets_dir }}/lab-ca-secret.yaml"
+  when: (secrets_dir ~ '/lab-ca-secret.yaml') is file
+
+- name: ClusterIssuery i certyfikat CA
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ repo_dir }}/bootstrap/cert-manager/lab-ca.yaml"
+
+- name: Certyfikat CA gotowy
+  kubernetes.core.k8s_info:
+    api_version: cert-manager.io/v1
+    kind: Certificate
+    namespace: cert-manager
+    name: lab-ca
+    wait: true
+    wait_condition: {type: Ready, status: "True"}
+    wait_timeout: 300
+
+- name: Secret CA
+  kubernetes.core.k8s_info:
+    kind: Secret
+    namespace: cert-manager
+    name: lab-ca
+  register: lab_ca_secret
+
+- name: Zapisz Secret CA w .secrets/ (do odtworzenia po przebudowie)
+  ansible.builtin.copy:
+    dest: "{{ secrets_dir }}/lab-ca-secret.yaml"
+    mode: "0600"
+    content: |
+      {{ {'apiVersion': 'v1', 'kind': 'Secret', 'type': 'kubernetes.io/tls',
+          'metadata': {'name': 'lab-ca', 'namespace': 'cert-manager',
+                       'annotations': lab_ca_secret.resources[0].metadata.annotations | default({}),
+                       'labels': lab_ca_secret.resources[0].metadata.labels | default({})},
+          'data': lab_ca_secret.resources[0].data} | to_nice_yaml }}
+
+- name: Wyeksportuj certyfikat CA
+  ansible.builtin.copy:
+    dest: "{{ ca_cert_file }}"
+    mode: "0644"
+    content: "{{ lab_ca_secret.resources[0].data['ca.crt'] | b64decode }}"
+
+- name: ClusterIssuer lab-ca gotowy
+  kubernetes.core.k8s_info:
+    api_version: cert-manager.io/v1
+    kind: ClusterIssuer
+    name: lab-ca
+    wait: true
+    wait_condition: {type: Ready, status: "True"}
+    wait_timeout: 120

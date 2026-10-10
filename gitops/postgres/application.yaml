@@ -1,0 +1,27 @@
+# Klaster PostgreSQL (CNPG Cluster) dla aplikacji CRUD
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: http://gitea-http.gitea.svc.cluster.local:3000/gitea-admin/k3d-gitops-lab.git
+    targetRevision: main
+    path: gitops/postgres/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: crud
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true   # CRD (CNPG / Prometheus Operator) mogą jeszcze nie istnieć
+    retry:
+      limit: -1                      # bez limitu — CRD i obrazy mogą dojść później
+      backoff: {duration: 20s, factor: 2, maxDuration: 5m}

@@ -1,0 +1,54 @@
+- name: Repo Helm Argo
+  kubernetes.core.helm_repository:
+    name: "{{ charts.argocd.repo }}"
+    repo_url: "{{ charts.argocd.url }}"
+
+- name: Argo CD
+  kubernetes.core.helm:
+    name: argocd
+    chart_ref: "{{ charts.argocd.repo }}/{{ charts.argocd.chart }}"
+    chart_version: "{{ charts.argocd.version }}"
+    release_namespace: argocd
+    create_namespace: true
+    values_files: ["{{ repo_dir }}/bootstrap/argocd/values.yaml"]
+
+- name: Dostęp Argo CD do repo w Gitea (adres wewnętrzny, bez TLS)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: repo-k3d-gitops-lab
+        namespace: argocd
+        labels:
+          argocd.argoproj.io/secret-type: repository
+      stringData:
+        type: git
+        url: "{{ gitea_internal_repo_url }}"
+        username: "{{ gitea_admin_user }}"
+        password: "{{ argocd_git_token }}"
+  no_log: true
+
+# Sekrety, których nie trzymamy w Gicie, a których potrzebują aplikacje wdrażane przez Argo CD
+- name: Namespace monitoring
+  kubernetes.core.k8s:
+    state: present
+    definition: {apiVersion: v1, kind: Namespace, metadata: {name: monitoring}}
+
+- name: Poświadczenia admina Grafany
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata: {name: grafana-admin, namespace: monitoring}
+      stringData:
+        admin-user: admin
+        admin-password: "{{ grafana_admin_password }}"
+  no_log: true
+
+- name: Root Application (app-of-apps)
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ repo_dir }}/bootstrap/argocd/root-app.yaml"

@@ -1,0 +1,24 @@
+# Dodatkowe metryki dla wbudowanego eksportera CNPG (zamiast własnego eksportera):
+# cnpg_crud_items_total, cnpg_crud_items_last_insert_age_seconds
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pg-custom-queries
+  labels:
+    cnpg.io/reload: ""
+data:
+  queries.yaml: |
+    crud_items:
+      query: |
+        SELECT count(*) AS total,
+               COALESCE(EXTRACT(EPOCH FROM now() - max(created_at)), 0) AS last_insert_age_seconds
+        FROM public.items
+      target_databases: ["crud"]
+      predicate_query: "SELECT to_regclass('public.items') IS NOT NULL"
+      metrics:
+        - total:
+            usage: GAUGE
+            description: Liczba rekordów w tabeli items
+        - last_insert_age_seconds:
+            usage: GAUGE
+            description: Sekundy od ostatnio dodanego rekordu

@@ -1,0 +1,71 @@
+# Instalacja całego labu jednym poleceniem:
+#   cd ansible && ansible-playbook site.yml -K
+# Bez kroków wymagających sudo (/etc/hosts, CA w systemie): -e manage_host=false
+# Kroki są idempotentne — ponowne uruchomienie tylko dociąga brakujące elementy.
+- name: Lab Kubernetes CI/CD (k3d + Cilium + GitOps)
+  hosts: localhost
+  gather_facts: false
+
+  module_defaults:
+    group/kubernetes.core.k8s:
+      context: "{{ kube_context }}"
+    kubernetes.core.helm:
+      context: "{{ kube_context }}"
+      wait: true
+      timeout: "{{ helm_timeout }}"
+
+  pre_tasks:
+    - name: Hasła (generowane raz, trzymane w .secrets/)
+      ansible.builtin.set_fact:
+        gitea_admin_password: "{{ lookup('ansible.builtin.password', secrets_dir ~ '/gitea-admin-password', length=24, chars=['ascii_letters', 'digits']) }}"
+        grafana_admin_password: "{{ lookup('ansible.builtin.password', secrets_dir ~ '/grafana-admin-password', length=24, chars=['ascii_letters', 'digits']) }}"
+      no_log: true
+
+  tasks:
+    - name: 1. Klaster k3d + Cilium + cache obrazów
+      ansible.builtin.import_tasks: tasks/01-cluster.yml
+      tags: [cluster]
+
+    - name: 2. cert-manager i własne CA
+      ansible.builtin.import_tasks: tasks/02-cert-manager.yml
+      tags: [cert-manager]
+
+    - name: Host — /etc/hosts i zaufanie do CA
+      ansible.builtin.import_tasks: tasks/03-host.yml
+      when: manage_host | bool
+      tags: [host]
+
+    - name: 3. Gitea + repozytorium GitOps
+      ansible.builtin.import_tasks: tasks/04-gitea.yml
+      tags: [gitea]
+
+    - name: Obraz aplikacji CRUD w lokalnym rejestrze
+      ansible.builtin.import_tasks: tasks/05-crud-image.yml
+      tags: [image]
+
+    - name: 4. Argo CD + root Application
+      ansible.builtin.import_tasks: tasks/06-argocd.yml
+      tags: [argocd]
+
+    - name: 5–9. Czekam aż Argo CD wdroży resztę stosu
+      ansible.builtin.import_tasks: tasks/07-wait-apps.yml
+      tags: [wait]
+
+  post_tasks:
+    - name: Hasło admina Argo CD
+      kubernetes.core.k8s_info:
+        kind: Secret
+        namespace: argocd
+        name: argocd-initial-admin-secret
+      register: argocd_admin
+      tags: [always]
+
+    - name: Podsumowanie
+      ansible.builtin.debug:
+        msg:
+          - "Argo CD:  https://argocd.lab.test   admin / {{ (argocd_admin.resources[0].data.password | b64decode) if argocd_admin.resources else '(zmienione)' }}"
+          - "Gitea:    https://gitea.lab.test    {{ gitea_admin_user }} / {{ secrets_dir }}/gitea-admin-password"
+          - "Grafana:  https://grafana.lab.test  admin / {{ secrets_dir }}/grafana-admin-password"
+          - "CRUD:     https://crud.lab.test/items"
+          - "CA:       {{ ca_cert_file }}"
+      tags: [always]

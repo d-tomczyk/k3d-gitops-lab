@@ -1,0 +1,25 @@
+# jetstack/cert-manager v1.21.2
+crds:
+  enabled: true
+  keep: true
+
+resources:
+  requests: {cpu: 10m, memory: 48Mi}
+  limits: {memory: 128Mi}
+webhook:
+  resources:
+    requests: {cpu: 10m, memory: 24Mi}
+    limits: {memory: 64Mi}
+cainjector:
+  resources:
+    requests: {cpu: 10m, memory: 48Mi}
+    limits: {memory: 160Mi}
+startupapicheck:
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 64Mi}
+
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: false   # ServiceMonitor dopiero w gitops/monitoring-config (CRD z kube-prometheus-stack)

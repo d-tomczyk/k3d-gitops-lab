@@ -1,0 +1,34 @@
+# Operator CloudNativePG (zarządza klastrem PostgreSQL z gitops/postgres)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://cloudnative-pg.github.io/charts
+      chart: cloudnative-pg
+      targetRevision: 0.29.1
+      helm:
+        releaseName: cnpg
+        valueFiles:
+          - $values/gitops/cnpg-operator/values.yaml
+    - repoURL: http://gitea-http.gitea.svc.cluster.local:3000/gitea-admin/k3d-gitops-lab.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true        # CRD CNPG są za duże na client-side apply
+    retry:
+      limit: -1
+      backoff: {duration: 20s, factor: 2, maxDuration: 5m}

@@ -1,0 +1,80 @@
+# Odinstalowanie labu:
+#   cd ansible && ansible-playbook uninstall.yml -K
+# Domyślnie usuwa klaster oraz wpisy w /etc/hosts i zaufanie do CA (system + przeglądarki).
+# Zostawia cache obrazów (szybka ponowna instalacja) i .secrets/ (te same hasła i to samo CA).
+# Pełne sprzątanie:  -e purge_cache=true -e purge_secrets=true
+# Bez sudo:          -e manage_host=false
+- name: Odinstalowanie labu Kubernetes CI/CD
+  hosts: localhost
+  gather_facts: false
+  vars:
+    purge_cache: false
+    purge_secrets: false
+
+  tasks:
+    - name: Usuń klaster k3d (z rejestrem lab-registry)
+      ansible.builtin.command: "{{ repo_dir }}/k8s-lab.sh destroy"
+      environment:
+        CLUSTER_NAME: "{{ cluster_name }}"
+      register: destroy
+      changed_when: "'Successfully deleted' in destroy.stderr or 'Successfully deleted' in destroy.stdout"
+      failed_when: false
+
+    - name: Usuń pull-through cache obrazów
+      ansible.builtin.command: "{{ repo_dir }}/k8s-lab.sh purge-cache"
+      when: purge_cache | bool
+
+    - name: Zaufanie do CA i /etc/hosts
+      when: manage_host | bool
+      tags: [host]
+      block:
+        - name: Domeny labu z /etc/hosts
+          become: true
+          ansible.builtin.blockinfile:
+            path: /etc/hosts
+            marker: "# {mark} k8s-lab ({{ cluster_name }})"
+            state: absent
+
+        - name: CA labu z magazynu systemowego
+          become: true
+          ansible.builtin.file:
+            path: /usr/local/share/ca-certificates/k8s-lab-ca.crt
+            state: absent
+          register: system_ca
+
+        - name: update-ca-certificates
+          become: true
+          ansible.builtin.command: update-ca-certificates --fresh
+          when: system_ca is changed
+
+        - name: Bazy NSS przeglądarek
+          ansible.builtin.find:
+            paths: "{{ nss_search_paths | select('directory') | list }}"
+            patterns: cert9.db
+            recurse: true
+            depth: 3
+          vars:
+            nss_search_paths:
+              - "{{ lookup('env', 'HOME') }}/.mozilla/firefox"
+              - "{{ lookup('env', 'HOME') }}/snap/firefox/common/.mozilla/firefox"
+              - "{{ lookup('env', 'HOME') }}/.pki"
+              - "{{ lookup('env', 'HOME') }}/snap/chromium/current/.pki"
+          register: nss_dbs
+
+        - name: CA labu z baz NSS przeglądarek
+          ansible.builtin.command: certutil -D -d "sql:{{ item.path | dirname }}" -n "k8s-lab CA ({{ cluster_name }})"
+          loop: "{{ nss_dbs.files }}"
+          loop_control:
+            label: "{{ item.path | dirname }}"
+          register: nss_delete
+          changed_when: nss_delete.rc == 0
+          failed_when: false
+
+    - name: Usuń lokalne sekrety i certyfikat CA
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ secrets_dir }}"
+        - "{{ ca_cert_file }}"
+      when: purge_secrets | bool

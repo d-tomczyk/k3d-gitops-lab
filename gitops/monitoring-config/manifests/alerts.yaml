@@ -1,0 +1,49 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: crud-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: crud-app
+      rules:
+        - alert: CrudAppDown
+          expr: absent(up{job="crud-app", namespace="crud"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: Aplikacja CRUD niedostępna
+            description: Brak działających (UP) instancji crud-app od ponad minuty.
+        - alert: CrudAppHigh5xxRate
+          expr: |
+            sum(rate(http_requests_total{job="crud-app", status=~"5.."}[5m]))
+              /
+            sum(rate(http_requests_total{job="crud-app"}[5m])) > 0.05
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Wysoki odsetek błędów 5xx w aplikacji CRUD
+            description: '{{ $value | humanizePercentage }} żądań kończy się błędem 5xx.'
+        - alert: CrudAppHpaAtMax
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="crud", horizontalpodautoscaler="crud-app"}
+              >=
+            kube_horizontalpodautoscaler_spec_max_replicas{namespace="crud", horizontalpodautoscaler="crud-app"}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: HPA aplikacji CRUD na maksimum replik
+            description: HPA crud-app działa na maksymalnej liczbie replik od 5 minut.
+    - name: postgres
+      rules:
+        - alert: PostgresDown
+          expr: absent(cnpg_collector_up{namespace="crud", cluster="pg"} == 1)
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: PostgreSQL niedostępny
+            description: Eksporter CNPG nie raportuje działającej instancji klastra pg.

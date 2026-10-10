@@ -1,0 +1,26 @@
+# Tag obrazu brany z manifestu (jedno źródło prawdy): gitops/crud/manifests/deployment.yaml
+- name: Obraz z manifestu Deploymentu
+  ansible.builtin.set_fact:
+    crud_image_ref: "{{ (lookup('ansible.builtin.file', repo_dir ~ '/gitops/crud/manifests/deployment.yaml') | from_yaml).spec.template.spec.containers[0].image }}"
+
+- name: Nazwa i tag obrazu
+  ansible.builtin.set_fact:
+    crud_image_name: "{{ crud_image_ref.split('/')[-1].split(':')[0] }}"
+    crud_image_tag: "{{ crud_image_ref.split(':')[-1] }}"
+
+- name: Tagi w lokalnym rejestrze
+  ansible.builtin.uri:
+    url: "http://localhost:{{ registry_host_port }}/v2/{{ crud_image_name }}/tags/list"
+    status_code: [200, 404]
+  register: registry_tags
+
+- name: Build i push obrazu
+  when: crud_image_tag not in (registry_tags.json.tags | default([], true) if registry_tags.status == 200 else [])
+  block:
+    - name: docker build
+      ansible.builtin.command:
+        argv: [docker, build, -t, "localhost:{{ registry_host_port }}/{{ crud_image_name }}:{{ crud_image_tag }}", "{{ repo_dir }}/src/crud-app"]
+
+    - name: docker push
+      ansible.builtin.command:
+        argv: [docker, push, "localhost:{{ registry_host_port }}/{{ crud_image_name }}:{{ crud_image_tag }}"]

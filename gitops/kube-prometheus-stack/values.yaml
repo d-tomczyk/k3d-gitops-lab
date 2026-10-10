@@ -1,0 +1,117 @@
+# prometheus-community/kube-prometheus-stack 92.3.0 — values dla Argo CD (gitops/kube-prometheus-stack/application.yaml)
+fullnameOverride: kps
+cleanPrometheusOperatorObjectNames: true
+
+crds:
+  enabled: true
+
+# --- komponenty control-plane niedostępne w k3s (wbudowane w jeden proces k3s) ---
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    windows: false
+windowsMonitoring:
+  enabled: false
+
+# --- Prometheus ---
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    retentionSize: 1500MB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    # Zbieraj ServiceMonitory/PodMonitory/reguły z całego klastra, bez labela "release"
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {memory: 1280Mi}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 2Gi
+
+# --- Alertmanager ---
+alertmanager:
+  alertmanagerSpec:
+    retention: 48h
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {memory: 96Mi}
+
+# --- Grafana ---
+grafana:
+  admin:
+    existingSecret: grafana-admin     # klucze admin-user / admin-password (tworzy bootstrap/Ansible)
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: lab-ca
+    hosts: [grafana.lab.test]
+    tls:
+      - secretName: grafana-tls
+        hosts: [grafana.lab.test]
+  grafana.ini:
+    server:
+      root_url: https://grafana.lab.test
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    resources:
+      requests: {cpu: 10m, memory: 48Mi}
+      limits: {memory: 128Mi}
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 320Mi}
+
+# --- Prometheus Operator ---
+prometheusOperator:
+  admissionWebhooks:
+    certManager:
+      enabled: true          # certyfikat webhooka z cert-managera zamiast hooków Helma (lepiej z Argo CD)
+  resources:
+    requests: {cpu: 20m, memory: 64Mi}
+    limits: {memory: 192Mi}
+  prometheusConfigReloader:
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+      limits: {memory: 48Mi}
+
+kube-state-metrics:
+  resources:
+    requests: {cpu: 10m, memory: 48Mi}
+    limits: {memory: 128Mi}
+
+prometheus-node-exporter:
+  hostRootFsMount:
+    enabled: false           # węzły k3d to kontenery — "/" nie jest mountem shared/slave
+  resources:
+    requests: {cpu: 10m, memory: 24Mi}
+    limits: {memory: 64Mi}

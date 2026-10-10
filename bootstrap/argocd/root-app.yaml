@@ -1,0 +1,25 @@
+# Root Application (app-of-apps): wdraża wszystkie gitops/*/application.yaml z repo w Gitei.
+# Nowy komponent = nowy katalog gitops/<nazwa>/ z plikiem application.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: http://gitea-http.gitea.svc.cluster.local:3000/gitea-admin/k3d-gitops-lab.git
+    targetRevision: main
+    path: gitops
+    directory:
+      recurse: true
+      include: "*/application.yaml"   # tylko definicje Applications (values i manifesty czytają same aplikacje)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

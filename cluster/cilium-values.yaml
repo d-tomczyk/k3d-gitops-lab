@@ -1,0 +1,30 @@
+# Values Cilium (instalowane przez cilium CLI w k8s-lab.sh: install / upgrade).
+# Flagi sieciowe — NIE ZMIENIAĆ (k3s ma wbudowane kube-proxy, API po nazwie kontenera).
+ipam:
+  mode: kubernetes
+kubeProxyReplacement: false
+k8sServiceHost: k3d-lab-server-0
+k8sServicePort: 6443
+
+# Metryki agenta i operatora (endpointy). Scrapowanie: PodMonitory w gitops/monitoring-config,
+# więc nie potrzeba CRD Prometheusa w momencie instalacji Cilium.
+prometheus:
+  enabled: true
+operator:
+  replicas: 1
+  prometheus:
+    enabled: true
+
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - icmp
