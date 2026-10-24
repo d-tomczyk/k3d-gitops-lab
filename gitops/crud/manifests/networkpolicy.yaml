@@ -1,0 +1,72 @@
+# Izolacja namespace crud (egzekwuje Cilium; wbudowany kontroler NetworkPolicy k3s jest wyłączony).
+# Domyślnie blokowany cały ruch przychodzący, potem wyjątki. Egress (DNS, API, rejestr) zostaje otwarty.
+# Sondy kubeleta przechodzą zawsze — Cilium przepuszcza ruch z hosta węzła.
+# Test: make test-netpol
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# crud-app: Traefik (Ingress), Prometheus (/metrics), obciążenie k6 z tests/hpa-load.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: crud-app
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: crud-app
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: traefik}
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: prometheus}
+        - podSelector:
+            matchLabels: {batch.kubernetes.io/job-name: hpa-load}
+      ports:
+        - port: 8080
+---
+# PostgreSQL: SQL tylko z crud-app, status instancji dla operatora CNPG, metryki dla Prometheusa
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pg
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: pg
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/name: crud-app}
+      ports:
+        - port: 5432
+    # pody klastra pg między sobą (replikacja, joby initdb/join)
+    - from:
+        - podSelector:
+            matchLabels: {cnpg.io/cluster: pg}
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: cnpg-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: cloudnative-pg}
+      ports:
+        - port: 8000
+        - port: 5432
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: prometheus}
+      ports:
+        - port: 9187

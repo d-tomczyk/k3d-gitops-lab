@@ -162,7 +162,7 @@ k3d-gitops-lab/
 ├── gitops/                     2. wdraża Argo CD; 1 katalog = 1 Application
 │   ├── cnpg-operator/            application.yaml + values.yaml   (operator CloudNativePG)
 │   ├── postgres/                 application.yaml + manifests/    (CNPG Cluster, zapytania eksportera)
-│   ├── crud/                     application.yaml + manifests/    (Deployment, Service, Ingress, HPA, ConfigMap)
+│   ├── crud/                     application.yaml + manifests/    (Deployment, Service, Ingress, HPA, ConfigMap, NetworkPolicy)
 │   ├── kube-prometheus-stack/    application.yaml + values.yaml   (Prometheus, Grafana, Alertmanager)
 │   └── monitoring-config/        application.yaml + manifests/    (ServiceMonitory, PodMonitory, alerty, dashboardy)
 │
@@ -231,6 +231,9 @@ curl -s https://crud.lab.test/items
 # autoskalowanie: repliki rosną do 5 pod obciążeniem i wracają do 2 po ~1–2 min
 make test-hpa
 
+# izolacja sieci: crud-app łączy się z bazą, pod z innego namespace jest blokowany (DROPPED w Hubble)
+make test-netpol
+
 # alert CrudAppDown w Alertmanagerze po ~2–3 min
 kubectl -n crud scale deploy/crud-app --replicas=0
 kubectl -n crud scale deploy/crud-app --replicas=2    # przywrócenie
@@ -280,6 +283,9 @@ cilium status
 - **Deployment aplikacji bez pola `replicas`.** Liczbą replik steruje HPA, a Argo CD z self-heal nie walczy z nim.
 - **Metryki Cilium/Hubble włączone w values od początku.** Scrapowanie zapewniają PodMonitory w GitOps, więc nie trzeba aktualizować
   Cilium po instalacji CRD Prometheusa.
+- **NetworkPolicy zamiast service mesh.** Polityki w namespace `crud` (default-deny dla ruchu przychodzącego + wyjątki dla
+  Traefika, Prometheusa, operatora CNPG i aplikacji -> baza) egzekwuje istniejący Cilium w eBPF, bez dodatkowych podów
+  i bez zmiany jego flag. Mesh (sidecary/ztunnel, mTLS) dokładałby setki MiB RAM na jednym hoście bez realnej korzyści w labie.
 - **k3s**: kube-scheduler, controller-manager, etcd i kube-proxy nie są osobnymi komponentami, więc ich monitoring jest wyłączony.
   node-exporter działa bez montowania `/` hosta (węzły k3d to kontenery).
 - **Lokalny cache obrazów** (pull-through, `k3d-cache-*`): każdy obraz pobiera się z internetu raz, a nie osobno na każdy węzeł,

@@ -7,7 +7,7 @@ GITEA_AUTH   = Authorization: Basic $$(printf 'gitea-admin:%s' "$$(cat .secrets/
 CRUD_IMAGE   = $$(grep -oP 'image: lab-registry:5000/\K\S+' gitops/crud/manifests/deployment.yaml)
 
 .DEFAULT_GOAL := help
-.PHONY: help deps install up stop status passwords push image test-crud test-hpa uninstall purge
+.PHONY: help deps install up stop status passwords push image test-crud test-hpa test-netpol uninstall purge
 
 help: ## Lista komend
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
@@ -48,6 +48,9 @@ test-crud: ## Szybki test CRUD przez HTTPS
 
 test-hpa: ## Test autoskalowania: obciążenie k6, skalowanie w górę i powrót (~6 min)
 	./tests/hpa-test.sh
+
+test-netpol: ## Test NetworkPolicy: baza dostępna tylko dla crud-app, ruch spoza namespace blokowany
+	./tests/netpol-test.sh
 
 uninstall: ## Usuwa klaster, /etc/hosts i zaufanie do CA (zostawia cache obrazów i .secrets/)
 	$(ANSIBLE) uninstall.yml -K
