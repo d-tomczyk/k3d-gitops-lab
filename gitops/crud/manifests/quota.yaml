@@ -1,0 +1,31 @@
+# Budżet zasobów namespace crud (aplikacja + PostgreSQL + obciążenie k6 z tests/hpa-load.yaml).
+# Najgorszy przypadek: 5 replik crud-app + 2 dodatkowe przy rolling update, pg, k6
+# -> requests ~500m CPU / 640Mi, limits ~2750m CPU / 1760Mi; quota zostawia zapas.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: crud
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "4"
+    limits.memory: 3Gi
+    pods: "15"
+    persistentvolumeclaims: "3"
+    requests.storage: 5Gi
+---
+# Domyślne requests/limits dla kontenerów bez własnych (quota wymaga ich od każdego poda)
+# oraz górna granica dla pojedynczego kontenera.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: crud
+spec:
+  limits:
+    - type: Container
+      defaultRequest: {cpu: 50m, memory: 64Mi}
+      default: {cpu: 250m, memory: 256Mi}
+      max: {cpu: "1", memory: 512Mi}
+    - type: PersistentVolumeClaim
+      max: {storage: 2Gi}

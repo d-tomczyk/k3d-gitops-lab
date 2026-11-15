@@ -162,7 +162,7 @@ k3d-gitops-lab/
 ├── gitops/                     2. wdraża Argo CD; 1 katalog = 1 Application
 │   ├── cnpg-operator/            application.yaml + values.yaml   (operator CloudNativePG)
 │   ├── postgres/                 application.yaml + manifests/    (CNPG Cluster, zapytania eksportera)
-│   ├── crud/                     application.yaml + manifests/    (Deployment, Service, Ingress, HPA, ConfigMap, NetworkPolicy)
+│   ├── crud/                     application.yaml + manifests/    (Deployment, Service, Ingress, HPA, ConfigMap, NetworkPolicy, ResourceQuota, LimitRange)
 │   ├── kube-prometheus-stack/    application.yaml + values.yaml   (Prometheus, Grafana, Alertmanager)
 │   └── monitoring-config/        application.yaml + manifests/    (ServiceMonitory, PodMonitory, alerty, dashboardy)
 │
@@ -286,6 +286,8 @@ cilium status
 - **NetworkPolicy zamiast service mesh.** Polityki w namespace `crud` (default-deny dla ruchu przychodzącego + wyjątki dla
   Traefika, Prometheusa, operatora CNPG i aplikacji -> baza) egzekwuje istniejący Cilium w eBPF, bez dodatkowych podów
   i bez zmiany jego flag. Mesh (sidecary/ztunnel, mTLS) dokładałby setki MiB RAM na jednym hoście bez realnej korzyści w labie.
+- **ResourceQuota i LimitRange w namespace `crud`.** Quota ogranicza łączne zasoby aplikacji, bazy i obciążenia k6
+  (z zapasem na 5 replik + rolling update), a LimitRange nadaje domyślne requests/limits kontenerom, które ich nie mają.
 - **k3s**: kube-scheduler, controller-manager, etcd i kube-proxy nie są osobnymi komponentami, więc ich monitoring jest wyłączony.
   node-exporter działa bez montowania `/` hosta (węzły k3d to kontenery).
 - **Lokalny cache obrazów** (pull-through, `k3d-cache-*`): każdy obraz pobiera się z internetu raz, a nie osobno na każdy węzeł,
