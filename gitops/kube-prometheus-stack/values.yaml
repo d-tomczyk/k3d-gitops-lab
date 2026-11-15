@@ -89,7 +89,7 @@ grafana:
       limits: {memory: 128Mi}
   resources:
     requests: {cpu: 50m, memory: 128Mi}
-    limits: {memory: 320Mi}
+    limits: {memory: 512Mi}   # przy 320Mi OOM podczas otwierania dashboardów (procesy pluginów Grafany)
 
 # --- Prometheus Operator ---
 prometheusOperator:
