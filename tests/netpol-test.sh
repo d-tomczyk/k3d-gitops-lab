@@ -23,7 +23,9 @@ check "default  -> pg-rw.crud:5432"       blocked outside pg-rw.crud.svc.cluster
 check "default  -> crud-app.crud:80"      blocked outside crud-app.crud.svc.cluster.local 80
 check "HTTPS (Traefik) -> crud-app"       ok      curl -sf https://crud.lab.test/items
 
-echo "Odrzucone połączenia w Hubble:"
-kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
-  hubble observe --verdict DROPPED --to-namespace "$NS" --last 5 2>/dev/null || true
+echo "Odrzucone połączenia w Hubble (agent każdego węzła widzi tylko swoje pody):"
+for agent in $(kubectl -n kube-system get pods -l k8s-app=cilium -o name); do
+  kubectl -n kube-system exec "$agent" -c cilium-agent -- \
+    hubble observe --verdict DROPPED --to-namespace "$NS" --since 1m 2>/dev/null | grep 'Policy denied' || true
+done
 exit $fail
